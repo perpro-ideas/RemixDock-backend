@@ -19,10 +19,16 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  const frontendUrl =
-    configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    configService.get<string>('FRONTEND_URL'),
+  ].filter(Boolean) as string[];
+
   app.enableCors({
-    origin: frontendUrl,
+    origin: allowedOrigins,
     credentials: true,
   });
 
