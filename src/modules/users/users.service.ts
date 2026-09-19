@@ -25,6 +25,26 @@ export class UsersService {
     });
   }
 
+  async findById(id: string): Promise<User | null> {
+    return this.prisma.user.findUnique({
+      where: { id },
+    });
+  }
+
+  async findResponseById(id: string): Promise<UserResponseDto | null> {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
   async create(data: CreateUserData): Promise<UserResponseDto> {
     return this.prisma.user.create({
       data: {
@@ -40,6 +60,16 @@ export class UsersService {
         createdAt: true,
         updatedAt: true,
       },
+    });
+  }
+
+  async updateHashedRefreshToken(
+    userId: string,
+    hashedToken: string | null,
+  ): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { hashedRefreshToken: hashedToken },
     });
   }
 }

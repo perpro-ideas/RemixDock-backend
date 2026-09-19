@@ -37,3 +37,4 @@ coverage/
 /prisma/migrations/dev.db*
 
 .agents
+dist/
