@@ -23,6 +23,7 @@ model User {
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
   passwordResetTokens PasswordResetToken[]
+  creditLedgerEntries CreditLedgerEntry[]
 
   @@map("users")
 }
@@ -62,3 +63,27 @@ model Plan {
 
   @@map("plans")
 }
+
+enum CreditEntryType {
+  PLAN_SUBSCRIPTION
+  TOPUP_PURCHASE
+  REMIX_DOWNLOAD
+  REMIX_REQUEST
+  ADMIN_ADJUSTMENT
+}
+
+model CreditLedgerEntry {
+  id           String          @id @default(uuid())
+  userId       String          @map("user_id")
+  amount       Int
+  type         CreditEntryType
+  description  String
+  metadataJson Json?           @map("metadata_json")
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("credit_ledger_entries")
+}
+
