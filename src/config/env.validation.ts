@@ -1,5 +1,5 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsNumber, IsString, validateSync } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, validateSync } from 'class-validator';
 
 export enum Environment {
   Development = 'development',
@@ -25,6 +25,18 @@ export class EnvironmentVariables {
 
   @IsString()
   JWT_REFRESH_SECRET: string;
+
+  @IsOptional()
+  @IsString()
+  PAYPAL_CLIENT_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  PAYPAL_CLIENT_SECRET?: string;
+
+  @IsOptional()
+  @IsString()
+  PAYPAL_API_URL?: string;
 }
 
 export function validate(config: Record<string, unknown>): EnvironmentVariables {

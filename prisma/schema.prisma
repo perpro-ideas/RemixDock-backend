@@ -24,6 +24,8 @@ model User {
   updatedAt           DateTime             @updatedAt @map("updated_at")
   passwordResetTokens PasswordResetToken[]
   creditLedgerEntries CreditLedgerEntry[]
+  orders              Order[]
+  subscriptions       Subscription[]
 
   @@map("users")
 }
@@ -48,18 +50,20 @@ enum PlanType {
 }
 
 model Plan {
-  id              String    @id @default(uuid())
+  id              String         @id @default(uuid())
   name            String
   description     String?
   type            PlanType
-  price           Decimal   @db.Decimal(10, 2)
-  durationDays    Int       @default(30) @map("duration_days")
-  creditsIncluded Int       @default(0) @map("credits_included")
-  benefitsJson    Json      @map("benefits_json")
-  canRequestRemix Boolean   @default(false) @map("can_request_remix")
-  isActive        Boolean   @default(true) @map("is_active")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  price           Decimal        @db.Decimal(10, 2)
+  durationDays    Int            @default(30) @map("duration_days")
+  creditsIncluded Int            @default(0) @map("credits_included")
+  benefitsJson    Json           @map("benefits_json")
+  canRequestRemix Boolean        @default(false) @map("can_request_remix")
+  isActive        Boolean        @default(true) @map("is_active")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  orders          Order[]
+  subscriptions   Subscription[]
 
   @@map("plans")
 }
@@ -86,4 +90,55 @@ model CreditLedgerEntry {
   @@index([userId])
   @@map("credit_ledger_entries")
 }
+
+enum OrderStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  userId        String      @map("user_id")
+  planId        String      @map("plan_id")
+  amount        Decimal     @db.Decimal(10, 2)
+  currency      String      @default("USD")
+  status        OrderStatus @default(PENDING)
+  paypalOrderId String?     @unique @map("paypal_order_id")
+  metadataJson  Json?       @map("metadata_json")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@index([userId])
+  @@map("orders")
+}
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  userId               String             @map("user_id")
+  planId               String             @map("plan_id")
+  paypalSubscriptionId String?            @unique @map("paypal_subscription_id")
+  status               SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart   DateTime           @map("current_period_start")
+  currentPeriodEnd     DateTime           @map("current_period_end")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@index([userId])
+  @@map("subscriptions")
+}
+
 

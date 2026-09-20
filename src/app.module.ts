@@ -5,6 +5,7 @@ import { PrismaModule } from './database/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CreditsModule } from './modules/credits/credits.module';
 import { HealthModule } from './modules/health/health.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { PingsModule } from './modules/pings/pings.module';
 import { PlansModule } from './modules/plans/plans.module';
 import { UsersModule } from './modules/users/users.module';
@@ -22,6 +23,7 @@ import { UsersModule } from './modules/users/users.module';
     PingsModule,
     PlansModule,
     CreditsModule,
+    PaymentsModule,
   ],
 })
 export class AppModule {}
