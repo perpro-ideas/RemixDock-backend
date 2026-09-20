@@ -52,6 +52,11 @@ describe('PayPal Webhooks & Idempotent Asynchronous Processing (e2e)', () => {
     creditsService = app.get(CreditsService);
 
     // Clean up residual data
+    await prisma.subscription.deleteMany({
+      where: {
+        user: { email: testUser.email },
+      },
+    });
     await prisma.order.deleteMany({
       where: {
         user: { email: testUser.email },
@@ -113,6 +118,11 @@ describe('PayPal Webhooks & Idempotent Asynchronous Processing (e2e)', () => {
 
   afterAll(async () => {
     if (prisma) {
+      await prisma.subscription.deleteMany({
+        where: {
+          user: { email: testUser.email },
+        },
+      });
       await prisma.order.deleteMany({
         where: {
           user: { email: testUser.email },
@@ -210,6 +220,16 @@ describe('PayPal Webhooks & Idempotent Asynchronous Processing (e2e)', () => {
     expect(history.length).toBe(1);
     expect(history[0].amount).toBe(creditsForTestPlan);
     expect(history[0].type).toBe('PLAN_SUBSCRIPTION');
+    expect(history[0].description).toContain('Suscripción a membresía');
+
+    // Verify subscription created
+    const sub = await prisma.subscription.findFirst({
+      where: { userId: testUserId, planId: testPlanId },
+    });
+    expect(sub).not.toBeNull();
+    expect(sub?.status).toBe('ACTIVE');
+    expect(sub?.currentPeriodStart).toBeDefined();
+    expect(sub?.currentPeriodEnd).toBeDefined();
   });
 
   it('3. POST /api/v1/payments/paypal/webhook for already COMPLETED order is strictly idempotent (200 OK, no duplicate credits)', async () => {

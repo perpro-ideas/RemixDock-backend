@@ -4,7 +4,12 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { CreditEntryType, OrderStatus } from '@prisma/client';
+import {
+  CreditEntryType,
+  OrderStatus,
+  PlanType,
+  SubscriptionStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreditsService } from '../../credits/credits.service';
 import { OrderResponseDto } from '../dto/order-response.dto';
@@ -133,23 +138,75 @@ export class PaymentsService {
         include: { plan: true },
       });
 
+      // PROBLEMA 1: Si es plan periódico (MONTHLY o YEARLY), registrar suscripción activa
+      if (
+        order.plan.type === PlanType.MONTHLY ||
+        order.plan.type === PlanType.YEARLY
+      ) {
+        const startDate = new Date();
+        const durationDays =
+          order.plan.durationDays > 0
+            ? order.plan.durationDays
+            : order.plan.type === PlanType.YEARLY
+              ? 365
+              : 30;
+        const endDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+
+        const existingSub = await tx.subscription.findFirst({
+          where: { userId: order.userId },
+        });
+
+        if (existingSub) {
+          await tx.subscription.update({
+            where: { id: existingSub.id },
+            data: {
+              planId: order.plan.id,
+              status: SubscriptionStatus.ACTIVE,
+              currentPeriodStart: startDate,
+              currentPeriodEnd: endDate,
+              paypalSubscriptionId: paypalOrderId || undefined,
+            },
+          });
+        } else {
+          await tx.subscription.create({
+            data: {
+              userId: order.userId,
+              planId: order.plan.id,
+              status: SubscriptionStatus.ACTIVE,
+              currentPeriodStart: startDate,
+              currentPeriodEnd: endDate,
+              paypalSubscriptionId: paypalOrderId || undefined,
+            },
+          });
+        }
+      }
+
+      // PROBLEMA 2: Acreditación contable en el ledger inmutable según el tipo de plan
+      if (order.plan.creditsIncluded > 0) {
+        const isCreditsPack = order.plan.type === PlanType.CREDITS_PACK;
+        const entryType = isCreditsPack
+          ? CreditEntryType.TOPUP_PURCHASE
+          : CreditEntryType.PLAN_SUBSCRIPTION;
+        const description = isCreditsPack
+          ? `Compra de paquete de créditos: ${order.plan.name}`
+          : `Suscripción a membresía: ${order.plan.name}`;
+
+        await this.creditsService.addEntry(
+          userId,
+          order.plan.creditsIncluded,
+          entryType,
+          description,
+          {
+            orderId: order.id,
+            planId: order.plan.id,
+            paypalOrderId,
+          },
+          tx,
+        );
+      }
+
       return completed;
     });
-
-    // Acreditación contable en el ledger inmutable
-    if (order.plan.creditsIncluded > 0) {
-      await this.creditsService.addEntry(
-        userId,
-        order.plan.creditsIncluded,
-        CreditEntryType.PLAN_SUBSCRIPTION,
-        `Acreditación por compra de plan: ${order.plan.name}`,
-        {
-          orderId: order.id,
-          planId: order.plan.id,
-          paypalOrderId,
-        },
-      );
-    }
 
     return {
       message: 'Orden procesada y créditos acreditados exitosamente',
@@ -216,32 +273,94 @@ export class PaymentsService {
     }
 
     if (order.status === OrderStatus.PENDING) {
+      const finalPaypalOrderId =
+        relatedOrderId || resourceId || order.paypalOrderId;
+
       await this.prisma.$transaction(async (tx) => {
         await tx.order.update({
           where: { id: order.id },
           data: {
             status: OrderStatus.COMPLETED,
-            paypalOrderId: relatedOrderId || resourceId || order.paypalOrderId,
+            paypalOrderId: finalPaypalOrderId,
           },
         });
+
+        // PROBLEMA 1: Si es plan periódico (MONTHLY o YEARLY), registrar suscripción activa
+        if (
+          order.plan.type === PlanType.MONTHLY ||
+          order.plan.type === PlanType.YEARLY
+        ) {
+          const startDate = new Date();
+          const durationDays =
+            order.plan.durationDays > 0
+              ? order.plan.durationDays
+              : order.plan.type === PlanType.YEARLY
+                ? 365
+                : 30;
+          const endDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+
+          const existingSub = await tx.subscription.findFirst({
+            where: { userId: order.userId },
+          });
+
+          if (existingSub) {
+            await tx.subscription.update({
+              where: { id: existingSub.id },
+              data: {
+                planId: order.plan.id,
+                status: SubscriptionStatus.ACTIVE,
+                currentPeriodStart: startDate,
+                currentPeriodEnd: endDate,
+                paypalSubscriptionId: finalPaypalOrderId || undefined,
+              },
+            });
+          } else {
+            await tx.subscription.create({
+              data: {
+                userId: order.userId,
+                planId: order.plan.id,
+                status: SubscriptionStatus.ACTIVE,
+                currentPeriodStart: startDate,
+                currentPeriodEnd: endDate,
+                paypalSubscriptionId: finalPaypalOrderId || undefined,
+              },
+            });
+          }
+        }
+
+        // PROBLEMA 2: Acreditación contable en el ledger inmutable según el tipo de plan
+        if (order.plan.creditsIncluded > 0) {
+          const isCreditsPack = order.plan.type === PlanType.CREDITS_PACK;
+          const entryType = isCreditsPack
+            ? CreditEntryType.TOPUP_PURCHASE
+            : CreditEntryType.PLAN_SUBSCRIPTION;
+          const description = isCreditsPack
+            ? `Compra de paquete de créditos: ${order.plan.name}`
+            : `Suscripción a membresía: ${order.plan.name}`;
+
+          await this.creditsService.addEntry(
+            order.userId,
+            order.plan.creditsIncluded,
+            entryType,
+            description,
+            {
+              orderId: order.id,
+              planId: order.plan.id,
+              webhookEventId: event.id,
+            },
+            tx,
+          );
+        }
       });
 
-      if (order.plan.creditsIncluded > 0) {
-        await this.creditsService.addEntry(
-          order.userId,
-          order.plan.creditsIncluded,
-          CreditEntryType.PLAN_SUBSCRIPTION,
-          `Acreditación por compra de plan: ${order.plan.name}`,
-          {
-            orderId: order.id,
-            planId: order.plan.id,
-            webhookEventId: event.id,
-          },
-        );
-      }
-
-      this.logger.log(`Orden ${order.id} completada y créditos acreditados exitosamente vía webhook.`);
-      return { received: true, processed: true, message: 'Orden completada y créditos acreditados' };
+      this.logger.log(
+        `Orden ${order.id} completada y créditos acreditados exitosamente vía webhook.`,
+      );
+      return {
+        received: true,
+        processed: true,
+        message: 'Orden completada y créditos acreditados',
+      };
     }
 
     return { received: true, processed: false, message: 'Estado de orden no procesable' };

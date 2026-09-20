@@ -44,6 +44,11 @@ describe('PayPal Payments & Idempotent Credits Accreditation (e2e)', () => {
     prisma = app.get(PrismaService);
 
     // Clean up test data
+    await prisma.subscription.deleteMany({
+      where: {
+        user: { email: testUser.email },
+      },
+    });
     await prisma.order.deleteMany({
       where: {
         user: { email: testUser.email },
@@ -56,7 +61,13 @@ describe('PayPal Payments & Idempotent Credits Accreditation (e2e)', () => {
     });
     await prisma.plan.deleteMany({
       where: {
-        name: { in: ['PayPal E2E Active Plan', 'PayPal E2E Inactive Plan'] },
+        name: {
+          in: [
+            'PayPal E2E Active Plan',
+            'PayPal E2E Inactive Plan',
+            'Pack Test 30 Créditos E2E',
+          ],
+        },
       },
     });
 
@@ -113,6 +124,11 @@ describe('PayPal Payments & Idempotent Credits Accreditation (e2e)', () => {
 
   afterAll(async () => {
     if (prisma) {
+      await prisma.subscription.deleteMany({
+        where: {
+          user: { email: testUser.email },
+        },
+      });
       await prisma.order.deleteMany({
         where: {
           user: { email: testUser.email },
@@ -125,7 +141,13 @@ describe('PayPal Payments & Idempotent Credits Accreditation (e2e)', () => {
       });
       await prisma.plan.deleteMany({
         where: {
-          name: { in: ['PayPal E2E Active Plan', 'PayPal E2E Inactive Plan'] },
+          name: {
+            in: [
+              'PayPal E2E Active Plan',
+              'PayPal E2E Inactive Plan',
+              'Pack Test 30 Créditos E2E',
+            ],
+          },
         },
       });
     }
@@ -218,6 +240,16 @@ describe('PayPal Payments & Idempotent Credits Accreditation (e2e)', () => {
     const latestMovement = afterCreditsRes.body.history[0];
     expect(latestMovement.amount).toBe(creditsForActivePlan);
     expect(latestMovement.type).toBe('PLAN_SUBSCRIPTION');
+    expect(latestMovement.description).toContain('Suscripción a membresía');
+
+    // Verify subscription was created and active in subscriptions table
+    const createdSub = await prisma.subscription.findFirst({
+      where: { userId: testUserId, planId: activePlanId },
+    });
+    expect(createdSub).not.toBeNull();
+    expect(createdSub?.status).toBe('ACTIVE');
+    expect(createdSub?.currentPeriodStart).toBeDefined();
+    expect(createdSub?.currentPeriodEnd).toBeDefined();
   });
 
   it('4. POST /api/v1/payments/paypal/capture-order idempotently handles repeat captures without double crediting (200 OK)', async () => {
@@ -250,6 +282,75 @@ describe('PayPal Payments & Idempotent Credits Accreditation (e2e)', () => {
 
     expect(afterRes.body.balance).toBe(balanceBefore);
     expect(afterRes.body.history.length).toBe(historyCountBefore);
+  });
+
+  it('4.1. POST /api/v1/payments/paypal/capture-order for CREDITS_PACK uses TOPUP_PURCHASE and does not touch subscriptions table', async () => {
+    // 1. Create a credits pack plan
+    const packPlan = await prisma.plan.create({
+      data: {
+        name: 'Pack Test 30 Créditos E2E',
+        description: 'Paquete de créditos sin suscripción recurrente',
+        type: 'CREDITS_PACK',
+        price: 19.99,
+        durationDays: 0,
+        creditsIncluded: 30,
+        benefitsJson: ['Descarga directa sin caducidad'],
+        canRequestRemix: false,
+        isActive: true,
+      },
+    });
+
+    const beforeRes = await request(app.getHttpServer())
+      .get('/api/v1/me/credits')
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(200);
+    const balanceBefore = beforeRes.body.balance;
+
+    const subCountBefore = await prisma.subscription.count({
+      where: { userId: testUserId },
+    });
+
+    // 2. Create order for the credits pack
+    const createRes = await request(app.getHttpServer())
+      .post('/api/v1/payments/paypal/create-order')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ planId: packPlan.id })
+      .expect(201);
+
+    const packOrderId = createRes.body.orderId;
+    const packPaypalOrderId = createRes.body.paypalOrderId;
+
+    // 3. Capture order
+    const captureRes = await request(app.getHttpServer())
+      .post('/api/v1/payments/paypal/capture-order')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({
+        orderId: packOrderId,
+        paypalOrderId: packPaypalOrderId,
+      })
+      .expect(200);
+
+    expect(captureRes.body.order.status).toBe('COMPLETED');
+
+    // 4. Verify subscriptions table was NOT modified (count remains unchanged)
+    const subCountAfter = await prisma.subscription.count({
+      where: { userId: testUserId },
+    });
+    expect(subCountAfter).toBe(subCountBefore);
+
+    // 5. Verify credit ledger entry uses TOPUP_PURCHASE and specific description
+    const afterRes = await request(app.getHttpServer())
+      .get('/api/v1/me/credits')
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(200);
+
+    expect(afterRes.body.balance).toBe(balanceBefore + 30);
+    const latest = afterRes.body.history[0];
+    expect(latest.amount).toBe(30);
+    expect(latest.type).toBe('TOPUP_PURCHASE');
+    expect(latest.description).toBe(
+      'Compra de paquete de créditos: Pack Test 30 Créditos E2E',
+    );
   });
 
   it('5. POST /api/v1/payments/paypal/* without authorization returns 401 Unauthorized', async () => {
