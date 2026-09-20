@@ -4,6 +4,7 @@ import { validate } from './config/env.validation';
 import { PrismaModule } from './database/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CreditsModule } from './modules/credits/credits.module';
+import { DownloadsModule } from './modules/downloads/downloads.module';
 import { GenresModule } from './modules/genres/genres.module';
 import { HealthModule } from './modules/health/health.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -28,6 +29,7 @@ import { UsersModule } from './modules/users/users.module';
     PaymentsModule,
     GenresModule,
     TracksModule,
+    DownloadsModule,
   ],
 })
 export class AppModule {}

@@ -8,8 +8,9 @@ import { CreditHistoryResponseDto } from './dto/credit-history-response.dto';
 export class CreditsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getBalance(userId: string): Promise<number> {
-    const aggregate = await this.prisma.creditLedgerEntry.aggregate({
+  async getBalance(userId: string, tx?: Prisma.TransactionClient): Promise<number> {
+    const client = tx ?? this.prisma;
+    const aggregate = await client.creditLedgerEntry.aggregate({
       where: { userId },
       _sum: { amount: true },
     });
@@ -23,19 +24,22 @@ export class CreditsService {
     type: CreditEntryType,
     description: string,
     metadata?: Record<string, unknown>,
+    tx?: Prisma.TransactionClient,
   ): Promise<CreditLedgerEntry> {
     if (amount === 0) {
       throw new BadRequestException('El monto del movimiento no puede ser cero');
     }
 
+    const client = tx ?? this.prisma;
+
     if (amount < 0) {
-      const currentBalance = await this.getBalance(userId);
+      const currentBalance = await this.getBalance(userId, client);
       if (currentBalance + amount < 0) {
         throw new BadRequestException('Créditos insuficientes para realizar esta acción');
       }
     }
 
-    return this.prisma.creditLedgerEntry.create({
+    return client.creditLedgerEntry.create({
       data: {
         userId,
         amount,

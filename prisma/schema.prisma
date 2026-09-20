@@ -26,6 +26,7 @@ model User {
   creditLedgerEntries CreditLedgerEntry[]
   orders              Order[]
   subscriptions       Subscription[]
+  downloads           Download[]
 
   @@map("users")
 }
@@ -179,8 +180,9 @@ model Track {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  genre Genre  @relation(fields: [genreId], references: [id])
-  stems Stem[]
+  genre     Genre      @relation(fields: [genreId], references: [id])
+  stems     Stem[]
+  downloads Download[]
 
   @@index([genreId])
   @@index([bpm])
@@ -198,10 +200,29 @@ model Stem {
   creditCost Int      @default(1) @map("credit_cost")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  track     Track      @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  downloads Download[]
 
   @@index([trackId])
   @@map("stems")
+}
+
+model Download {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  trackId      String?  @map("track_id")
+  stemId       String?  @map("stem_id")
+  costCredits  Int      @map("cost_credits")
+  downloadedAt DateTime @default(now()) @map("downloaded_at")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track Track? @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  stem  Stem?  @relation(fields: [stemId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([trackId])
+  @@index([stemId])
+  @@map("downloads")
 }
 
 
