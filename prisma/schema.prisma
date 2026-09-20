@@ -141,4 +141,68 @@ model Subscription {
   @@map("subscriptions")
 }
 
+enum StemType {
+  DRUMS
+  BASS
+  VOCALS
+  SYNTHS
+  INSTRUMENTS
+  OTHER
+}
+
+model Genre {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  tracks    Track[]
+
+  @@map("genres")
+}
+
+model Track {
+  id               String   @id @default(uuid())
+  title            String
+  artist           String
+  remixer          String?
+  version          String?
+  genreId          String   @map("genre_id")
+  bpm              Int
+  musicalKey       String   @map("musical_key")
+  durationSeconds  Int      @map("duration_seconds")
+  previewAudioUrl  String   @map("preview_audio_url")
+  downloadAudioUrl String   @map("download_audio_url")
+  coverImageUrl    String?  @map("cover_image_url")
+  waveformJson     Json?    @map("waveform_json")
+  creditCost       Int      @default(1) @map("credit_cost")
+  isPublished      Boolean  @default(true) @map("is_published")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  genre Genre  @relation(fields: [genreId], references: [id])
+  stems Stem[]
+
+  @@index([genreId])
+  @@index([bpm])
+  @@index([musicalKey])
+  @@index([isPublished])
+  @@map("tracks")
+}
+
+model Stem {
+  id         String   @id @default(uuid())
+  trackId    String   @map("track_id")
+  name       String
+  type       StemType
+  audioUrl   String   @map("audio_url")
+  creditCost Int      @default(1) @map("credit_cost")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([trackId])
+  @@map("stems")
+}
+
+
 
