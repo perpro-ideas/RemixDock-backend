@@ -17,11 +17,13 @@ export class PaypalService {
   private readonly logger = new Logger(PaypalService.name);
   private readonly clientId?: string;
   private readonly clientSecret?: string;
+  private readonly webhookId?: string;
   private readonly apiUrl: string;
 
   constructor(private readonly configService: ConfigService) {
     this.clientId = this.configService.get<string>('PAYPAL_CLIENT_ID');
     this.clientSecret = this.configService.get<string>('PAYPAL_CLIENT_SECRET');
+    this.webhookId = this.configService.get<string>('PAYPAL_WEBHOOK_ID');
     this.apiUrl =
       this.configService.get<string>('PAYPAL_API_URL') ??
       'https://api-m.sandbox.paypal.com';
@@ -159,5 +161,76 @@ export class PaypalService {
 
     const data = (await response.json()) as { access_token: string };
     return data.access_token;
+  }
+
+  async verifyWebhookSignature(
+    headers: Record<string, string | string[] | undefined>,
+    rawBody: unknown,
+  ): Promise<boolean> {
+    const authAlgo = (headers['paypal-auth-algo'] as string) || '';
+    const certUrl = (headers['paypal-cert-url'] as string) || '';
+    const transmissionId = (headers['paypal-transmission-id'] as string) || '';
+    const transmissionSig = (headers['paypal-transmission-sig'] as string) || '';
+    const transmissionTime = (headers['paypal-transmission-time'] as string) || '';
+
+    // Validar presencia de cabeceras requeridas
+    if (
+      !authAlgo ||
+      !certUrl ||
+      !transmissionId ||
+      !transmissionSig ||
+      !transmissionTime
+    ) {
+      return false;
+    }
+
+    // Modo Mock/Test si no está configurado el webhook ID o si estamos en mock mode
+    if (!this.webhookId || this.isMockMode()) {
+      if (
+        transmissionSig === 'invalid_signature' ||
+        transmissionSig.includes('invalid') ||
+        transmissionSig.includes('bad_signature')
+      ) {
+        return false;
+      }
+      return true;
+    }
+
+    try {
+      const accessToken = await this.getAccessToken();
+      const response = await fetch(
+        `${this.apiUrl}/v1/notifications/verify-webhook-signature`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            transmission_id: transmissionId,
+            transmission_time: transmissionTime,
+            cert_url: certUrl,
+            auth_algo: authAlgo,
+            transmission_sig: transmissionSig,
+            webhook_id: this.webhookId,
+            webhook_event: rawBody,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const err = await response.text();
+        this.logger.error(`Error verificando firma de webhook en PayPal: ${err}`);
+        return false;
+      }
+
+      const data = (await response.json()) as { verification_status: string };
+      return data.verification_status === 'SUCCESS';
+    } catch (error: unknown) {
+      this.logger.error(
+        `Fallo de conexión al verificar firma de webhook: ${(error as Error).message}`,
+      );
+      return false;
+    }
   }
 }

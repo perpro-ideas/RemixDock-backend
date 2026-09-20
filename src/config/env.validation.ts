@@ -37,6 +37,10 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   PAYPAL_API_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  PAYPAL_WEBHOOK_ID?: string;
 }
 
 export function validate(config: Record<string, unknown>): EnvironmentVariables {
