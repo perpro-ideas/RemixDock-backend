@@ -280,4 +280,75 @@ describe('Music Catalog, DJ Metadata & Stems (e2e)', () => {
     expect(response.body.bpm).toBe(128);
     expect(response.body.musicalKey).toBe('6B');
   });
+
+  it('11. GET /api/v1/admin/tracks without token is rejected with 401 Unauthorized', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/admin/tracks')
+      .expect(401);
+  });
+
+  it('12. GET /api/v1/admin/tracks with regular user token is rejected with 403 Forbidden', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/admin/tracks')
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(403);
+  });
+
+  it('13. GET /api/v1/admin/tracks with ADMIN token returns paginated catalog including draft and published tracks (200 OK)', async () => {
+    // 1. Mark created track as draft (unpublished)
+    await request(app.getHttpServer())
+      .patch(`/api/v1/admin/tracks/${createdTrackId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isPublished: false })
+      .expect(200);
+
+    // 2. Verify public endpoint excludes this unpublished draft track
+    const publicResponse = await request(app.getHttpServer())
+      .get('/api/v1/tracks')
+      .expect(200);
+
+    const publicTrackIds = publicResponse.body.items.map(
+      (t: { id: string }) => t.id,
+    );
+    expect(publicTrackIds).not.toContain(createdTrackId);
+
+    // 3. Verify admin endpoint lists both published and unpublished draft tracks
+    const adminResponse = await request(app.getHttpServer())
+      .get('/api/v1/admin/tracks')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(adminResponse.body).toBeDefined();
+    expect(Array.isArray(adminResponse.body.items)).toBe(true);
+    expect(typeof adminResponse.body.total).toBe('number');
+    expect(adminResponse.body.total).toBeGreaterThanOrEqual(4);
+    expect(adminResponse.body.page).toBe(1);
+    expect(typeof adminResponse.body.totalPages).toBe('number');
+
+    const adminTrackIds = adminResponse.body.items.map(
+      (t: { id: string }) => t.id,
+    );
+    expect(adminTrackIds).toContain(createdTrackId);
+
+    const draftTrack = adminResponse.body.items.find(
+      (t: { id: string }) => t.id === createdTrackId,
+    );
+    expect(draftTrack).toBeDefined();
+    expect(draftTrack.isPublished).toBe(false);
+
+    const hasPublished = adminResponse.body.items.some(
+      (t: { isPublished: boolean }) => t.isPublished === true,
+    );
+    expect(hasPublished).toBe(true);
+
+    // 4. Verify admin filtering works with search query
+    const filteredAdminResponse = await request(app.getHttpServer())
+      .get('/api/v1/admin/tracks?search=Fisher')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(filteredAdminResponse.body.items.length).toBeGreaterThanOrEqual(1);
+    expect(filteredAdminResponse.body.items[0].id).toBe(createdTrackId);
+  });
 });
+

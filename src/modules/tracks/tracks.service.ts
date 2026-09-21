@@ -27,9 +27,70 @@ export class TracksService {
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.TrackWhereInput = {
-      isPublished: true,
+    const where = this.buildWhere(query, true);
+
+    const [total, tracks] = await Promise.all([
+      this.prisma.track.count({ where }),
+      this.prisma.track.findMany({
+        where,
+        include: {
+          genre: true,
+          _count: { select: { stems: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      items: tracks.map((t) => TrackResponseDto.fromEntity(t)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
     };
+  }
+
+  async findAllAdmin(query: QueryTracksDto): Promise<PaginatedTracksResult> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const where = this.buildWhere(query, false);
+
+    const [total, tracks] = await Promise.all([
+      this.prisma.track.count({ where }),
+      this.prisma.track.findMany({
+        where,
+        include: {
+          genre: true,
+          _count: { select: { stems: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      items: tracks.map((t) => TrackResponseDto.fromEntity(t)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
+  }
+
+  private buildWhere(
+    query: QueryTracksDto,
+    enforcePublished = false,
+  ): Prisma.TrackWhereInput {
+    const where: Prisma.TrackWhereInput = {};
+
+    if (enforcePublished) {
+      where.isPublished = true;
+    }
 
     if (query.genreSlug) {
       where.genre = {
@@ -60,27 +121,7 @@ export class TracksService {
       ];
     }
 
-    const [total, tracks] = await Promise.all([
-      this.prisma.track.count({ where }),
-      this.prisma.track.findMany({
-        where,
-        include: {
-          genre: true,
-          _count: { select: { stems: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-    ]);
-
-    return {
-      items: tracks.map((t) => TrackResponseDto.fromEntity(t)),
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit) || 1,
-    };
+    return where;
   }
 
   async findById(id: string): Promise<TrackResponseDto> {

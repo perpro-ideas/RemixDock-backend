@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
@@ -14,15 +15,22 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { CreateTrackDto } from '../dto/create-track.dto';
+import { QueryTracksDto } from '../dto/query-tracks.dto';
 import { TrackResponseDto } from '../dto/track-response.dto';
 import { UpdateTrackDto } from '../dto/update-track.dto';
-import { TracksService } from '../tracks.service';
+import { PaginatedTracksResult, TracksService } from '../tracks.service';
 
 @Controller('admin/tracks')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
 export class AdminTracksController {
   constructor(private readonly tracksService: TracksService) {}
+
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  async findAll(@Query() query: QueryTracksDto): Promise<PaginatedTracksResult> {
+    return this.tracksService.findAllAdmin(query);
+  }
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
