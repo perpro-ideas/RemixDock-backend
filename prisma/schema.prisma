@@ -27,6 +27,8 @@ model User {
   orders              Order[]
   subscriptions       Subscription[]
   downloads           Download[]
+  remixRequests       RemixRequest[]       @relation("RequestedByUser")
+  assignedRemixRequests RemixRequest[]     @relation("AssignedToRemixer")
 
   @@map("users")
 }
@@ -74,6 +76,8 @@ enum CreditEntryType {
   TOPUP_PURCHASE
   REMIX_DOWNLOAD
   REMIX_REQUEST
+  REMIX_REQUEST_ESCROW
+  REMIX_REQUEST_REFUND
   ADMIN_ADJUSTMENT
 }
 
@@ -157,6 +161,7 @@ model Genre {
   slug      String   @unique
   createdAt DateTime @default(now()) @map("created_at")
   tracks    Track[]
+  remixRequests RemixRequest[]
 
   @@map("genres")
 }
@@ -183,6 +188,7 @@ model Track {
   genre     Genre      @relation(fields: [genreId], references: [id])
   stems     Stem[]
   downloads Download[]
+  fulfilledRequests RemixRequest[]
 
   @@index([genreId])
   @@index([bpm])
@@ -225,5 +231,48 @@ model Download {
   @@map("downloads")
 }
 
+enum RemixRequestStatus {
+  PENDING
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
 
+enum FundingType {
+  INCLUDED_IN_PLAN
+  CREDITS_BOUNTY
+}
 
+model RemixRequest {
+  id            String             @id @default(uuid())
+  userId        String             @map("user_id")
+  remixerId     String?            @map("remixer_id")
+  trackId       String?            @map("track_id")
+  genreId       String?            @map("genre_id")
+  title         String
+  artist        String
+  referenceUrl  String?            @map("reference_url")
+  desiredBpm    Int?               @map("desired_bpm")
+  notes         String?
+  fundingType   FundingType        @map("funding_type")
+  bountyCredits Int                @default(0) @map("bounty_credits")
+  status        RemixRequestStatus @default(PENDING)
+  adminFeedback String?            @map("admin_feedback")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  user           User   @relation("RequestedByUser", fields: [userId], references: [id], onDelete: Cascade)
+  remixer        User?  @relation("AssignedToRemixer", fields: [remixerId], references: [id], onDelete: SetNull)
+  deliveredTrack Track? @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  genre          Genre? @relation(fields: [genreId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([remixerId])
+  @@index([trackId])
+  @@index([genreId])
+  @@index([status])
+  @@index([fundingType])
+  @@map("remix_requests")
+}

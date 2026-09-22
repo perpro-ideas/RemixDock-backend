@@ -10,6 +10,7 @@ import { HealthModule } from './modules/health/health.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { PingsModule } from './modules/pings/pings.module';
 import { PlansModule } from './modules/plans/plans.module';
+import { RequestsModule } from './modules/requests/requests.module';
 import { TracksModule } from './modules/tracks/tracks.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -30,6 +31,7 @@ import { UsersModule } from './modules/users/users.module';
     GenresModule,
     TracksModule,
     DownloadsModule,
+    RequestsModule,
   ],
 })
 export class AppModule {}
