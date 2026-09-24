@@ -14,6 +14,7 @@ import { Roles } from '../../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { AssignRemixerDto } from '../dto/assign-remixer.dto';
+import { AvailableRemixerDto } from '../dto/available-remixer.dto';
 import { CompleteRemixRequestDto } from '../dto/complete-remix-request.dto';
 import { QueryAdminRemixRequestsDto } from '../dto/query-admin-remix-requests.dto';
 import { RejectRemixRequestDto } from '../dto/reject-remix-request.dto';
@@ -35,6 +36,12 @@ export class AdminRequestsController {
     @Query() query: QueryAdminRemixRequestsDto,
   ): Promise<PaginatedRemixRequestsResult> {
     return this.requestsService.findAllAdmin(query);
+  }
+
+  @Get('remixers')
+  @HttpCode(HttpStatus.OK)
+  async getAvailableRemixers(): Promise<AvailableRemixerDto[]> {
+    return this.requestsService.getAvailableRemixers();
   }
 
   @Get(':id')

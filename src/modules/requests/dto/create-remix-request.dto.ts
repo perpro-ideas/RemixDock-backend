@@ -43,6 +43,13 @@ export class CreateRemixRequestDto {
   desiredBpm?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(60)
+  @Max(200)
+  targetBpm?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(1000)
   notes?: string;

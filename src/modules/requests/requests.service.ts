@@ -13,8 +13,10 @@ import {
   SubscriptionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { AuthenticatedUser } from '../auth/types/jwt-payload.interface';
 import { CreditsService } from '../credits/credits.service';
 import { AssignRemixerDto } from './dto/assign-remixer.dto';
+import { AvailableRemixerDto } from './dto/available-remixer.dto';
 import { CompleteRemixRequestDto } from './dto/complete-remix-request.dto';
 import { CreateRemixRequestDto } from './dto/create-remix-request.dto';
 import { QueryAdminRemixRequestsDto } from './dto/query-admin-remix-requests.dto';
@@ -24,6 +26,7 @@ import {
   PaginatedRemixRequestsResult,
   RemixRequestResponseDto,
 } from './dto/remix-request-response.dto';
+import { RemixRequestQuotaResponseDto } from './dto/remix-request-quota-response.dto';
 
 const DEFAULT_INCLUDE = {
   user: { select: { id: true, username: true } },
@@ -39,10 +42,60 @@ export class RequestsService {
     private readonly creditsService: CreditsService,
   ) {}
 
+  async getUserQuota(userId: string): Promise<RemixRequestQuotaResponseDto> {
+    const now = new Date();
+    const activeSub = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        status: SubscriptionStatus.ACTIVE,
+        currentPeriodEnd: { gt: now },
+      },
+      include: { plan: true },
+    });
+
+    if (!activeSub || !activeSub.plan.canRequestRemix) {
+      return {
+        planName: null,
+        hasSubscription: false,
+        canRequestRemix: false,
+        monthlyLimit: 0,
+        usedThisPeriod: 0,
+        remaining: 0,
+      };
+    }
+
+    const monthlyLimit = 2;
+    const usedThisPeriod = await this.prisma.remixRequest.count({
+      where: {
+        userId,
+        fundingType: FundingType.INCLUDED_IN_PLAN,
+        createdAt: {
+          gte: activeSub.currentPeriodStart,
+          lte: activeSub.currentPeriodEnd,
+        },
+        status: {
+          notIn: [RemixRequestStatus.REJECTED, RemixRequestStatus.CANCELLED],
+        },
+      },
+    });
+
+    return {
+      planName: activeSub.plan.name,
+      hasSubscription: true,
+      canRequestRemix: true,
+      monthlyLimit,
+      usedThisPeriod,
+      remaining: Math.max(0, monthlyLimit - usedThisPeriod),
+      periodEnd: activeSub.currentPeriodEnd,
+    };
+  }
+
   async createRequest(
     userId: string,
     dto: CreateRemixRequestDto,
   ): Promise<RemixRequestResponseDto> {
+    const desiredBpm = dto.desiredBpm ?? dto.targetBpm;
+
     if (dto.genreId) {
       const genre = await this.prisma.genre.findUnique({
         where: { id: dto.genreId },
@@ -98,7 +151,7 @@ export class RequestsService {
           artist: dto.artist,
           genreId: dto.genreId,
           referenceUrl: dto.referenceUrl,
-          desiredBpm: dto.desiredBpm,
+          desiredBpm,
           notes: dto.notes,
           fundingType: FundingType.INCLUDED_IN_PLAN,
           bountyCredits: 0,
@@ -141,7 +194,7 @@ export class RequestsService {
           artist: dto.artist,
           genreId: dto.genreId,
           referenceUrl: dto.referenceUrl,
-          desiredBpm: dto.desiredBpm,
+          desiredBpm,
           notes: dto.notes,
           fundingType: FundingType.CREDITS_BOUNTY,
           bountyCredits: dto.bountyCredits!,
@@ -154,37 +207,71 @@ export class RequestsService {
     return RemixRequestResponseDto.fromEntity(created);
   }
 
+  private buildPrivacyWhere(
+    user: AuthenticatedUser,
+    query: QueryRemixRequestsDto,
+  ): Prisma.RemixRequestWhereInput {
+    const conditions: Prisma.RemixRequestWhereInput[] = [];
+
+    // Privacy isolation clause by role
+    if (user.role === Role.ADMIN) {
+      // Admins have global visibility
+    } else if (user.role === Role.REMIXER) {
+      // Remixers see their own requests and those assigned to them
+      conditions.push({
+        OR: [{ userId: user.id }, { remixerId: user.id }],
+      });
+    } else {
+      // Regular DJs (USER) strictly see only their own requests
+      conditions.push({
+        userId: user.id,
+      });
+    }
+
+    if (query.status) {
+      conditions.push({ status: query.status });
+    }
+
+    if (query.fundingType) {
+      conditions.push({ fundingType: query.fundingType });
+    }
+
+    if (query.genreSlug) {
+      conditions.push({ genre: { slug: query.genreSlug } });
+    }
+
+    if (query.search) {
+      const term = query.search.trim();
+      conditions.push({
+        OR: [
+          { title: { contains: term, mode: 'insensitive' } },
+          { artist: { contains: term, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    if (conditions.length === 0) {
+      return {};
+    }
+
+    if (conditions.length === 1) {
+      return conditions[0];
+    }
+
+    return {
+      AND: conditions,
+    };
+  }
+
   async findMyRequests(
-    userId: string,
+    user: AuthenticatedUser,
     query: QueryRemixRequestsDto,
   ): Promise<PaginatedRemixRequestsResult> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.RemixRequestWhereInput = {
-      userId,
-    };
-
-    if (query.status) {
-      where.status = query.status;
-    }
-
-    if (query.fundingType) {
-      where.fundingType = query.fundingType;
-    }
-
-    if (query.genreSlug) {
-      where.genre = { slug: query.genreSlug };
-    }
-
-    if (query.search) {
-      const term = query.search.trim();
-      where.OR = [
-        { title: { contains: term, mode: 'insensitive' } },
-        { artist: { contains: term, mode: 'insensitive' } },
-      ];
-    }
+    const where = this.buildPrivacyWhere(user, query);
 
     const [total, items] = await Promise.all([
       this.prisma.remixRequest.count({ where }),
@@ -207,33 +294,14 @@ export class RequestsService {
   }
 
   async findAll(
+    user: AuthenticatedUser,
     query: QueryRemixRequestsDto,
   ): Promise<PaginatedRemixRequestsResult> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.RemixRequestWhereInput = {};
-
-    if (query.status) {
-      where.status = query.status;
-    }
-
-    if (query.fundingType) {
-      where.fundingType = query.fundingType;
-    }
-
-    if (query.genreSlug) {
-      where.genre = { slug: query.genreSlug };
-    }
-
-    if (query.search) {
-      const term = query.search.trim();
-      where.OR = [
-        { title: { contains: term, mode: 'insensitive' } },
-        { artist: { contains: term, mode: 'insensitive' } },
-      ];
-    }
+    const where = this.buildPrivacyWhere(user, query);
 
     const [total, items] = await Promise.all([
       this.prisma.remixRequest.count({ where }),
@@ -255,7 +323,10 @@ export class RequestsService {
     };
   }
 
-  async findById(id: string): Promise<RemixRequestResponseDto> {
+  async findById(
+    id: string,
+    user: AuthenticatedUser,
+  ): Promise<RemixRequestResponseDto> {
     const request = await this.prisma.remixRequest.findUnique({
       where: { id },
       include: DEFAULT_INCLUDE,
@@ -263,6 +334,26 @@ export class RequestsService {
 
     if (!request) {
       throw new NotFoundException('La petición de remix no existe');
+    }
+
+    if (user.role === Role.ADMIN) {
+      return RemixRequestResponseDto.fromEntity(request);
+    }
+
+    if (user.role === Role.REMIXER) {
+      if (request.userId !== user.id && request.remixerId !== user.id) {
+        throw new ForbiddenException(
+          'No tienes permiso para consultar esta petición de remix',
+        );
+      }
+      return RemixRequestResponseDto.fromEntity(request);
+    }
+
+    // Role.USER
+    if (request.userId !== user.id) {
+      throw new ForbiddenException(
+        'No tienes permiso para consultar esta petición de remix',
+      );
     }
 
     return RemixRequestResponseDto.fromEntity(request);
@@ -423,11 +514,14 @@ export class RequestsService {
       );
     }
 
+    const notesToSave = dto.adminNotes ?? dto.notes;
+
     const updated = await this.prisma.remixRequest.update({
       where: { id },
       data: {
         remixerId: dto.remixerId,
         status: RemixRequestStatus.IN_PROGRESS,
+        ...(notesToSave !== undefined && notesToSave !== null ? { adminFeedback: notesToSave } : {}),
       },
       include: DEFAULT_INCLUDE,
     });
@@ -472,19 +566,29 @@ export class RequestsService {
       );
     }
 
+    const feedback = dto.notes || dto.adminNotes;
+    const shouldPublish =
+      dto.publishToCatalog === true || dto.isExclusive === false;
+
     const updated = await this.prisma.$transaction(async (tx) => {
-      // 1. Actualizar la petición
+      // 1. Actualizar visibilidad del track en catálogo o exclusividad para el DJ
+      await tx.track.update({
+        where: { id: dto.trackId },
+        data: { isPublished: shouldPublish },
+      });
+
+      // 2. Actualizar la petición
       const req = await tx.remixRequest.update({
         where: { id },
         data: {
           trackId: track.id,
           status: RemixRequestStatus.COMPLETED,
-          adminFeedback: dto.adminNotes ?? request.adminFeedback,
+          adminFeedback: feedback || request.adminFeedback,
         },
         include: DEFAULT_INCLUDE,
       });
 
-      // 2. Persistencia en downloads con costCredits = 0 para el solicitante
+      // 3. Persistencia en downloads con costCredits = 0 para el solicitante
       const existingDownload = await tx.download.findFirst({
         where: {
           userId: request.userId,
@@ -559,5 +663,20 @@ export class RequestsService {
     });
 
     return RemixRequestResponseDto.fromEntity(updated);
+  }
+
+  async getAvailableRemixers(): Promise<AvailableRemixerDto[]> {
+    return this.prisma.user.findMany({
+      where: {
+        role: { in: [Role.REMIXER, Role.ADMIN] },
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+      },
+      orderBy: { username: 'asc' },
+    });
   }
 }
