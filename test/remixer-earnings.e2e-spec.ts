@@ -260,9 +260,9 @@ describe('Remixer Studio, Royalties & Earnings Ledger (e2e)', () => {
       .expect(403);
   });
 
-  it('3. Remixer requests initial /studio/dashboard returns 0 balances and 1 produced track', async () => {
+  it('3. Remixer requests initial /studio and /studio/dashboard returns 0 balances and 1 produced track', async () => {
     const response = await request(app.getHttpServer())
-      .get('/api/v1/remixer/studio/dashboard')
+      .get('/api/v1/remixer/studio')
       .set('Authorization', `Bearer ${remixerToken}`)
       .expect(200);
 
@@ -272,6 +272,13 @@ describe('Remixer Studio, Royalties & Earnings Ledger (e2e)', () => {
     expect(response.body.assignedRequestsCount).toBe(0);
     expect(Array.isArray(response.body.recentEarnings)).toBe(true);
     expect(response.body.recentEarnings.length).toBe(0);
+
+    const aliasResponse = await request(app.getHttpServer())
+      .get('/api/v1/remixer/studio/dashboard')
+      .set('Authorization', `Bearer ${remixerToken}`)
+      .expect(200);
+
+    expect(aliasResponse.body.activeTracksCount).toBe(1);
   });
 
   it('4. DJ acquires catalog track (costs 2 credits): Remixer automatically receives 70% royalties (1.40 credits)', async () => {

@@ -38,7 +38,8 @@ export class RemixerController {
     private readonly payoutsService: PayoutsService,
   ) {}
 
-  @Get('studio/dashboard')
+  @Get(['studio', 'studio/dashboard'])
+  @Roles(Role.REMIXER, Role.ADMIN)
   @HttpCode(HttpStatus.OK)
   async getStudioDashboard(
     @CurrentUser() user: AuthenticatedUser,
