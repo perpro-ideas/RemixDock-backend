@@ -11,6 +11,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { PingsModule } from './modules/pings/pings.module';
 import { PlansModule } from './modules/plans/plans.module';
 import { RequestsModule } from './modules/requests/requests.module';
+import { RemixerModule } from './modules/remixer/remixer.module';
 import { TracksModule } from './modules/tracks/tracks.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -32,6 +33,7 @@ import { UsersModule } from './modules/users/users.module';
     TracksModule,
     DownloadsModule,
     RequestsModule,
+    RemixerModule,
   ],
 })
 export class AppModule {}

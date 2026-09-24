@@ -29,6 +29,9 @@ model User {
   downloads           Download[]
   remixRequests       RemixRequest[]       @relation("RequestedByUser")
   assignedRemixRequests RemixRequest[]     @relation("AssignedToRemixer")
+  remixerEarnings     RemixerEarning[]     @relation("UserRemixerEarnings")
+  payoutRequests      PayoutRequest[]      @relation("UserPayoutRequests")
+  producedTracks      Track[]              @relation("RemixerTracks")
 
   @@map("users")
 }
@@ -182,15 +185,19 @@ model Track {
   waveformJson     Json?    @map("waveform_json")
   creditCost       Int      @default(1) @map("credit_cost")
   isPublished      Boolean  @default(true) @map("is_published")
+  remixerId        String?  @map("remixer_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  genre     Genre      @relation(fields: [genreId], references: [id])
-  stems     Stem[]
-  downloads Download[]
+  genre             Genre            @relation(fields: [genreId], references: [id])
+  remixerUser       User?            @relation("RemixerTracks", fields: [remixerId], references: [id], onDelete: SetNull)
+  stems             Stem[]
+  downloads         Download[]
   fulfilledRequests RemixRequest[]
+  earnings          RemixerEarning[]
 
   @@index([genreId])
+  @@index([remixerId])
   @@index([bpm])
   @@index([musicalKey])
   @@index([isPublished])
@@ -267,6 +274,7 @@ model RemixRequest {
   remixer        User?  @relation("AssignedToRemixer", fields: [remixerId], references: [id], onDelete: SetNull)
   deliveredTrack Track? @relation(fields: [trackId], references: [id], onDelete: SetNull)
   genre          Genre? @relation(fields: [genreId], references: [id], onDelete: SetNull)
+  earnings       RemixerEarning[]
 
   @@index([userId])
   @@index([remixerId])
@@ -276,3 +284,75 @@ model RemixRequest {
   @@index([fundingType])
   @@map("remix_requests")
 }
+
+enum RemixerEarningType {
+  ROYALTY_DOWNLOAD
+  REMIX_BOUNTY
+  PAYOUT_DEDUCTION
+  PAYOUT_REFUND
+  PLATFORM_ADJUSTMENT
+}
+
+enum PayoutStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum PayoutMethod {
+  PAYPAL
+  BANK_TRANSFER
+}
+
+model RemixerEarning {
+  id              String             @id @default(uuid())
+  remixerId       String             @map("remixer_id")
+  amountCredits   Decimal            @map("amount_credits") @db.Decimal(10, 2)
+  type            RemixerEarningType
+  trackId         String?            @map("track_id")
+  requestId       String?            @map("request_id")
+  payoutRequestId String?            @map("payout_request_id")
+  description     String
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  remixer         User               @relation("UserRemixerEarnings", fields: [remixerId], references: [id], onDelete: Cascade)
+  track           Track?             @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  request         RemixRequest?      @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  payoutRequest   PayoutRequest?     @relation(fields: [payoutRequestId], references: [id], onDelete: SetNull)
+
+  @@index([remixerId])
+  @@index([type])
+  @@index([trackId])
+  @@index([requestId])
+  @@index([payoutRequestId])
+  @@index([createdAt])
+  @@map("remixer_earnings")
+}
+
+model PayoutRequest {
+  id                 String           @id @default(uuid())
+  remixerId          String           @map("remixer_id")
+  creditsAmount      Decimal          @map("credits_amount") @db.Decimal(10, 2)
+  amountFiat         Decimal          @map("amount_fiat") @db.Decimal(10, 2)
+  currency           String           @default("USD")
+  status             PayoutStatus     @default(PENDING)
+  method             PayoutMethod
+  destinationDetails Json             @map("destination_details")
+  adminFeedback      String?          @map("admin_feedback")
+  processedAt        DateTime?        @map("processed_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  remixer            User             @relation("UserPayoutRequests", fields: [remixerId], references: [id], onDelete: Cascade)
+  earnings           RemixerEarning[]
+
+  @@index([remixerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("payout_requests")
+}
+

@@ -9,6 +9,7 @@ import {
   FundingType,
   Prisma,
   RemixRequestStatus,
+  RemixerEarningType,
   Role,
   SubscriptionStatus,
 } from '@prisma/client';
@@ -571,10 +572,13 @@ export class RequestsService {
       dto.publishToCatalog === true || dto.isExclusive === false;
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      // 1. Actualizar visibilidad del track en catálogo o exclusividad para el DJ
+      // 1. Actualizar visibilidad del track en catálogo o exclusividad para el DJ y vincular remixer si no lo tenía
       await tx.track.update({
         where: { id: dto.trackId },
-        data: { isPublished: shouldPublish },
+        data: {
+          isPublished: shouldPublish,
+          ...(track.remixerId ? {} : { remixerId: request.remixerId }),
+        },
       });
 
       // 2. Actualizar la petición
@@ -603,6 +607,24 @@ export class RequestsService {
             userId: request.userId,
             trackId: track.id,
             costCredits: 0,
+          },
+        });
+      }
+
+      // 4. Liquidación de recompensa al remixer asignado si fue financiado con créditos
+      if (
+        request.fundingType === FundingType.CREDITS_BOUNTY &&
+        request.bountyCredits > 0 &&
+        request.remixerId
+      ) {
+        await tx.remixerEarning.create({
+          data: {
+            remixerId: request.remixerId,
+            amountCredits: new Prisma.Decimal(request.bountyCredits),
+            type: RemixerEarningType.REMIX_BOUNTY,
+            requestId: request.id,
+            trackId: track.id,
+            description: `Recompensa por remix exclusivo completado: ${request.title}`,
           },
         });
       }

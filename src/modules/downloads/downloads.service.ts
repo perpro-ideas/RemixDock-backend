@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { CreditEntryType } from '@prisma/client';
+import { CreditEntryType, Prisma, RemixerEarningType } from '@prisma/client';
 import archiver from 'archiver';
 import { Response } from 'express';
 import { Readable } from 'node:stream';
@@ -71,6 +71,19 @@ export class DownloadsService {
           costCredits: track.creditCost,
         },
       });
+
+      if (track.remixerId) {
+        const royaltyAmount = new Prisma.Decimal(track.creditCost).mul(0.7).toDecimalPlaces(2);
+        await tx.remixerEarning.create({
+          data: {
+            remixerId: track.remixerId,
+            amountCredits: royaltyAmount,
+            type: RemixerEarningType.ROYALTY_DOWNLOAD,
+            trackId: track.id,
+            description: `Regalías por descarga de pista: ${track.title}`,
+          },
+        });
+      }
     });
 
     return {
@@ -132,6 +145,19 @@ export class DownloadsService {
           costCredits: stem.creditCost,
         },
       });
+
+      if (stem.track?.remixerId) {
+        const royaltyAmount = new Prisma.Decimal(stem.creditCost).mul(0.7).toDecimalPlaces(2);
+        await tx.remixerEarning.create({
+          data: {
+            remixerId: stem.track.remixerId,
+            amountCredits: royaltyAmount,
+            type: RemixerEarningType.ROYALTY_DOWNLOAD,
+            trackId: stem.track.id,
+            description: `Regalías por descarga de stem: ${stem.name} (${stem.track.title})`,
+          },
+        });
+      }
     });
 
     return {
@@ -223,6 +249,19 @@ export class DownloadsService {
             costCredits: track.creditCost,
           },
         });
+
+        if (track.remixerId) {
+          const royaltyAmount = new Prisma.Decimal(track.creditCost).mul(0.7).toDecimalPlaces(2);
+          await tx.remixerEarning.create({
+            data: {
+              remixerId: track.remixerId,
+              amountCredits: royaltyAmount,
+              type: RemixerEarningType.ROYALTY_DOWNLOAD,
+              trackId: track.id,
+              description: `Regalías por descarga en lote de stems: ${track.title}`,
+            },
+          });
+        }
       });
     }
 
