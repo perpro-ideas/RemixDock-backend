@@ -24,6 +24,9 @@ describe('Downloads & User Library (e2e)', () => {
   let testGenreId: string;
   let testTrackId: string;
   let testStemId: string;
+  let testZipTrackId: string;
+  let testZeroStemsTrackId: string;
+  let testUnpublishedTrackId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -58,10 +61,23 @@ describe('Downloads & User Library (e2e)', () => {
       },
     });
     await prisma.stem.deleteMany({
-      where: { name: 'E2E Test Drums Stem' },
+      where: {
+        OR: [
+          { name: 'E2E Test Drums Stem' },
+          { name: { contains: 'E2E Zip' } },
+          { name: 'Secret Drums' },
+        ],
+      },
     });
     await prisma.track.deleteMany({
-      where: { title: 'E2E Downloads Track' },
+      where: {
+        OR: [
+          { title: 'E2E Downloads Track' },
+          { title: 'E2E Zip Stems Track' },
+          { title: 'E2E Zero Stems Track' },
+          { title: 'E2E Unpublished Track' },
+        ],
+      },
     });
     await prisma.genre.deleteMany({
       where: { slug: 'e2e-downloads-genre' },
@@ -113,6 +129,91 @@ describe('Downloads & User Library (e2e)', () => {
     testTrackId = track.id;
     testStemId = track.stems[0].id;
 
+    // Create test track specifically for stems ZIP batch download
+    const zipTrack = await prisma.track.create({
+      data: {
+        title: 'E2E Zip Stems Track',
+        artist: 'DJ Producer Test',
+        remixer: 'RemixDock VIP',
+        version: 'Festival Edit',
+        genreId: testGenreId,
+        bpm: 128,
+        musicalKey: '11B',
+        durationSeconds: 240,
+        previewAudioUrl: 'https://storage.remixdock.com/previews/e2e-zip.mp3',
+        downloadAudioUrl: 'https://storage.remixdock.com/masters/e2e-zip.wav',
+        coverImageUrl: 'https://storage.remixdock.com/covers/e2e-zip.jpg',
+        creditCost: 3,
+        isPublished: true,
+        stems: {
+          create: [
+            {
+              name: 'E2E Zip Drums',
+              type: StemType.DRUMS,
+              audioUrl: 'https://storage.remixdock.com/stems/e2e-zip-drums.wav',
+              creditCost: 1,
+            },
+            {
+              name: 'E2E Zip Bass',
+              type: StemType.BASS,
+              audioUrl: 'https://storage.remixdock.com/stems/e2e-zip-bass.wav',
+              creditCost: 1,
+            },
+          ],
+        },
+      },
+      include: { stems: true },
+    });
+    testZipTrackId = zipTrack.id;
+
+    // Create track with 0 stems to test validation
+    const zeroStemsTrack = await prisma.track.create({
+      data: {
+        title: 'E2E Zero Stems Track',
+        artist: 'DJ No Stems',
+        version: 'Original Mix',
+        genreId: testGenreId,
+        bpm: 120,
+        musicalKey: '4A',
+        durationSeconds: 180,
+        previewAudioUrl: 'https://storage.remixdock.com/previews/e2e-no-stems.mp3',
+        downloadAudioUrl: 'https://storage.remixdock.com/masters/e2e-no-stems.wav',
+        coverImageUrl: 'https://storage.remixdock.com/covers/e2e-no-stems.jpg',
+        creditCost: 2,
+        isPublished: true,
+      },
+    });
+    testZeroStemsTrackId = zeroStemsTrack.id;
+
+    // Create unpublished track with stems to test exclusivity
+    const unpublishedTrack = await prisma.track.create({
+      data: {
+        title: 'E2E Unpublished Track',
+        artist: 'Secret DJ',
+        version: 'VIP Mix',
+        genreId: testGenreId,
+        bpm: 130,
+        musicalKey: '1A',
+        durationSeconds: 200,
+        previewAudioUrl: 'https://storage.remixdock.com/previews/e2e-secret.mp3',
+        downloadAudioUrl: 'https://storage.remixdock.com/masters/e2e-secret.wav',
+        coverImageUrl: 'https://storage.remixdock.com/covers/e2e-secret.jpg',
+        creditCost: 2,
+        isPublished: false,
+        stems: {
+          create: [
+            {
+              name: 'Secret Drums',
+              type: StemType.DRUMS,
+              audioUrl: 'https://storage.remixdock.com/stems/secret-drums.wav',
+              creditCost: 1,
+            },
+          ],
+        },
+      },
+    });
+    testUnpublishedTrackId = unpublishedTrack.id;
+
     // Register & login test user
     const regRes = await request(app.getHttpServer())
       .post('/api/v1/auth/register')
@@ -145,10 +246,23 @@ describe('Downloads & User Library (e2e)', () => {
         where: { userId: testUserId },
       });
       await prisma.stem.deleteMany({
-        where: { id: testStemId },
+        where: {
+          OR: [
+            { id: testStemId },
+            { name: { contains: 'E2E Zip' } },
+            { name: 'Secret Drums' },
+          ],
+        },
       });
       await prisma.track.deleteMany({
-        where: { id: testTrackId },
+        where: {
+          OR: [
+            { id: testTrackId },
+            { id: testZipTrackId },
+            { id: testZeroStemsTrackId },
+            { id: testUnpublishedTrackId },
+          ],
+        },
       });
       await prisma.genre.deleteMany({
         where: { id: testGenreId },
@@ -292,6 +406,10 @@ describe('Downloads & User Library (e2e)', () => {
       .expect(401);
 
     await request(app.getHttpServer())
+      .post(`/api/v1/downloads/track/${testTrackId}/stems/zip`)
+      .expect(401);
+
+    await request(app.getHttpServer())
       .get('/api/v1/me/library')
       .expect(401);
   });
@@ -308,5 +426,117 @@ describe('Downloads & User Library (e2e)', () => {
       .post(`/api/v1/stems/${nonExistentUuid}/download`)
       .set('Authorization', `Bearer ${userToken}`)
       .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/downloads/track/${nonExistentUuid}/stems/zip`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(404);
+  });
+
+  it('8. POST /api/v1/downloads/track/:id/stems/zip returns 400 Bad Request when track has no stems', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/downloads/track/${testZeroStemsTrackId}/stems/zip`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(400);
+
+    expect(response.body.message).toContain('Este track no cuenta con stems multipista separados');
+  });
+
+  it('9. POST /api/v1/downloads/track/:id/stems/zip returns 404 Not Found when track is unpublished and not acquired', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/downloads/track/${testUnpublishedTrackId}/stems/zip`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(404);
+
+    expect(response.body.message).toContain('Pista no disponible en el catálogo');
+  });
+
+  it('10. POST /api/v1/downloads/track/:id/stems/zip returns 400 Bad Request when user has insufficient credits', async () => {
+    // Temporarily update zipTrack to require 100 credits (user currently has 7)
+    await prisma.track.update({
+      where: { id: testZipTrackId },
+      data: { creditCost: 100 },
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/downloads/track/${testZipTrackId}/stems/zip`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(400);
+
+    expect(response.body.message).toContain('Saldo de créditos insuficiente');
+
+    // Restore original credit cost of 3
+    await prisma.track.update({
+      where: { id: testZipTrackId },
+      data: { creditCost: 3 },
+    });
+  });
+
+  it('11. POST /api/v1/downloads/track/:id/stems/zip streams ZIP on-the-fly and debits credits on first acquisition', async () => {
+    const balanceBefore = await creditsService.getBalance(testUserId);
+    expect(balanceBefore).toBe(7);
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/downloads/track/${testZipTrackId}/stems/zip`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .buffer(true)
+      .parse((res, callback) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+
+    expect(response.headers['content-type']).toBe('application/zip');
+    expect(response.headers['content-disposition']).toBe(
+      'attachment; filename="DJ Producer Test - E2E Zip Stems Track (Festival Edit) - Stems Lossless.zip"',
+    );
+    expect(response.headers['transfer-encoding']).toBe('chunked');
+
+    // Check magic bytes PK\x03\x04
+    expect(Buffer.isBuffer(response.body)).toBe(true);
+    const bodyBuffer = response.body as Buffer;
+    expect(bodyBuffer.slice(0, 4).toString('hex')).toBe('504b0304');
+    expect(bodyBuffer.length).toBeGreaterThan(100);
+
+    // Verify balance was debited by 3 credits (7 -> 4)
+    const balanceAfter = await creditsService.getBalance(testUserId);
+    expect(balanceAfter).toBe(4);
+
+    // Verify download record exists
+    const downloadRecord = await prisma.download.findFirst({
+      where: { userId: testUserId, trackId: testZipTrackId },
+    });
+    expect(downloadRecord).not.toBeNull();
+    expect(downloadRecord?.costCredits).toBe(3);
+  });
+
+  it('12. POST /api/v1/tracks/:id/stems/zip alias works and re-downloading does not debit credits', async () => {
+    const balanceBefore = await creditsService.getBalance(testUserId);
+    expect(balanceBefore).toBe(4);
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/tracks/${testZipTrackId}/stems/zip`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .buffer(true)
+      .parse((res, callback) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+
+    expect(response.headers['content-type']).toBe('application/zip');
+    expect(response.headers['content-disposition']).toBe(
+      'attachment; filename="DJ Producer Test - E2E Zip Stems Track (Festival Edit) - Stems Lossless.zip"',
+    );
+
+    const bodyBuffer = response.body as Buffer;
+    expect(bodyBuffer.slice(0, 4).toString('hex')).toBe('504b0304');
+
+    // Verify balance remains completely unchanged (4 credits)
+    const balanceAfter = await creditsService.getBalance(testUserId);
+    expect(balanceAfter).toBe(4);
   });
 });
+
