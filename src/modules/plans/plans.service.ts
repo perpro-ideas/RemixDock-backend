@@ -55,6 +55,7 @@ export class PlansService {
         creditsIncluded: dto.creditsIncluded,
         benefitsJson: dto.benefits,
         canRequestRemix: dto.canRequestRemix ?? false,
+        remixRequestsLimit: dto.remixRequestsLimit ?? (dto.canRequestRemix ? 2 : 0),
         isActive: dto.isActive ?? true,
       },
     });
@@ -94,6 +95,9 @@ export class PlansService {
     }
     if (dto.canRequestRemix !== undefined) {
       dataToUpdate.canRequestRemix = dto.canRequestRemix;
+    }
+    if (dto.remixRequestsLimit !== undefined) {
+      dataToUpdate.remixRequestsLimit = dto.remixRequestsLimit;
     }
     if (dto.isActive !== undefined) {
       dataToUpdate.isActive = dto.isActive;

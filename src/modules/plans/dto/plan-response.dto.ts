@@ -10,6 +10,7 @@ export class PlanResponseDto {
   creditsIncluded: number;
   benefits: string[];
   canRequestRemix: boolean;
+  remixRequestsLimit: number;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -27,6 +28,7 @@ export class PlanResponseDto {
         ? (plan.benefitsJson as string[])
         : [],
       canRequestRemix: plan.canRequestRemix,
+      remixRequestsLimit: plan.remixRequestsLimit ?? 0,
       isActive: plan.isActive,
       createdAt: plan.createdAt,
       updatedAt: plan.updatedAt,

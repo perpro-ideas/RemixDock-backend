@@ -65,7 +65,20 @@ export class RequestsService {
       };
     }
 
-    const monthlyLimit = 2;
+    const monthlyLimit = activeSub.plan.remixRequestsLimit ?? (activeSub.plan.canRequestRemix ? 2 : 0);
+
+    if (monthlyLimit === 0) {
+      return {
+        planName: activeSub.plan.name,
+        hasSubscription: true,
+        canRequestRemix: false,
+        monthlyLimit: 0,
+        usedThisPeriod: 0,
+        remaining: 0,
+        periodEnd: activeSub.currentPeriodEnd,
+      };
+    }
+
     const usedThisPeriod = await this.prisma.remixRequest.count({
       where: {
         userId,
@@ -123,8 +136,14 @@ export class RequestsService {
         );
       }
 
-      // Máximo 2 peticiones de remixes incluidas por periodo mensual
-      const MAX_PLAN_REQUESTS_PER_PERIOD = 2;
+      const monthlyLimit = activeSub.plan.remixRequestsLimit ?? (activeSub.plan.canRequestRemix ? 2 : 0);
+
+      if (monthlyLimit === 0) {
+        throw new BadRequestException(
+          'Tu plan de suscripción actual no incluye peticiones de remixes. Mejora a un plan Pro o utiliza créditos de tu cuenta.',
+        );
+      }
+
       const countInPeriod = await this.prisma.remixRequest.count({
         where: {
           userId,
@@ -139,7 +158,7 @@ export class RequestsService {
         },
       });
 
-      if (countInPeriod >= MAX_PLAN_REQUESTS_PER_PERIOD) {
+      if (countInPeriod >= monthlyLimit) {
         throw new BadRequestException(
           'Has alcanzado el límite de peticiones de remixes incluidas en tu ciclo de facturación actual.',
         );

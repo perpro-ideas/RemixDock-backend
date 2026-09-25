@@ -47,6 +47,11 @@ export class CreatePlanDto {
   canRequestRemix?: boolean;
 
   @IsOptional()
+  @IsInt({ message: 'El límite de peticiones de remix debe ser un número entero' })
+  @Min(0, { message: 'El límite de peticiones de remix no puede ser negativo' })
+  remixRequestsLimit?: number;
+
+  @IsOptional()
   @IsBoolean({ message: 'El estado activo debe ser un booleano' })
   isActive?: boolean;
 }

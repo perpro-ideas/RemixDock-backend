@@ -64,8 +64,9 @@ model Plan {
   durationDays    Int            @default(30) @map("duration_days")
   creditsIncluded Int            @default(0) @map("credits_included")
   benefitsJson    Json           @map("benefits_json")
-  canRequestRemix Boolean        @default(false) @map("can_request_remix")
-  isActive        Boolean        @default(true) @map("is_active")
+  canRequestRemix    Boolean        @default(false) @map("can_request_remix")
+  remixRequestsLimit Int            @default(0) @map("remix_requests_limit")
+  isActive           Boolean        @default(true) @map("is_active")
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
   orders          Order[]

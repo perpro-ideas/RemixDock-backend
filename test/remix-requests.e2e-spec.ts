@@ -121,6 +121,12 @@ describe('Remix Requests Engine (e2e)', () => {
     const proClubPlan = await prisma.plan.findFirst({
       where: { name: 'DJ Pro Club' },
     });
+    if (proClubPlan && proClubPlan.remixRequestsLimit !== 2) {
+      await prisma.plan.update({
+        where: { id: proClubPlan.id },
+        data: { remixRequestsLimit: 2 },
+      });
+    }
     proClubPlanId = proClubPlan?.id ?? '';
 
     // Retrieve tech-house genre

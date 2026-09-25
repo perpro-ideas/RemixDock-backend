@@ -60,6 +60,7 @@ async function main(): Promise<void> {
       durationDays: 30,
       creditsIncluded: 15,
       canRequestRemix: false,
+      remixRequestsLimit: 0,
       benefitsJson: [
         '15 descargas mensuales en formato WAV/FLAC',
         'Acceso al catálogo general de remixes',
@@ -77,6 +78,7 @@ async function main(): Promise<void> {
       durationDays: 30,
       creditsIncluded: 50,
       canRequestRemix: true,
+      remixRequestsLimit: 2,
       benefitsJson: [
         '50 descargas mensuales en formato WAV/FLAC',
         'Acceso ilimitado a stems multipista separados',
@@ -95,6 +97,7 @@ async function main(): Promise<void> {
       durationDays: 365,
       creditsIncluded: 700,
       canRequestRemix: true,
+      remixRequestsLimit: 5,
       benefitsJson: [
         '700 descargas anuales acumulables',
         'Descarga ilimitada de stems y pistas acapella',
@@ -113,6 +116,7 @@ async function main(): Promise<void> {
       durationDays: 0,
       creditsIncluded: 25,
       canRequestRemix: false,
+      remixRequestsLimit: 0,
       benefitsJson: [
         '25 créditos de descarga directa',
         'Sin caducidad mensual',
@@ -141,6 +145,7 @@ async function main(): Promise<void> {
         creditsIncluded: plan.creditsIncluded,
         benefitsJson: plan.benefitsJson,
         canRequestRemix: plan.canRequestRemix,
+        remixRequestsLimit: plan.remixRequestsLimit,
         isActive: plan.isActive,
       },
       create: {
@@ -153,6 +158,7 @@ async function main(): Promise<void> {
         creditsIncluded: plan.creditsIncluded,
         benefitsJson: plan.benefitsJson,
         canRequestRemix: plan.canRequestRemix,
+        remixRequestsLimit: plan.remixRequestsLimit,
         isActive: plan.isActive,
       },
     });
